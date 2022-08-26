@@ -90,7 +90,7 @@ void RTC::Seed(uint32_t& seed)
 #else
 void RTC::Setup()
 {
-  m_Hour24 = 12
+  m_Hour24 = 12;
   m_Minute = 0;
 }
 

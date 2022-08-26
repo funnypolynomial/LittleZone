@@ -55,7 +55,12 @@ const int SPARSE_ROWS = 2*SCREEN_HEIGHT/5;
 const int SPARSE_ROWS = SCREEN_LOWER_HEIGHT;
 #endif
 const int SPARSE_COLS = SCREEN_WIDTH;
+
+#ifdef LCD_SMALL
 const int SPARSE_POOL_SIZE = 1100; // The saucer is big! Because of DEBUG_STACK_CHECK we know we have enough stack left over
+#else
+const int SPARSE_POOL_SIZE = 1400; // The saucer is big! Because of DEBUG_STACK_CHECK we know we have enough stack left over
+#endif
 
 // the x at _ptr in the pool
 #define SPARSE_GET_X(_ptr)      (*_ptr)

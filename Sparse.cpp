@@ -133,8 +133,10 @@ static void Pixel(byte x, byte y)
 {
   // set the pixel in the sparse data
   y -= rowOffset;
+#ifndef SCREEN_FULL_SIZE // avoid a warning
   if (y >= SPARSE_ROWS || x >= SPARSE_COLS)
     return;
+#endif
 
   if (cacheY == y && cacheX == x)
   {

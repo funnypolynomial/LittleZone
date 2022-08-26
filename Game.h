@@ -2,12 +2,16 @@
 
 // Switch to larger Sparse algorithm and go larger than 256 pixels
 #define SCREEN_FULL_SIZE
-// Draw the lower (green) part in two passes (requiring less Sparse data)
+// (Otherwise) Draw the lower (green) part in two passes (requiring less Sparse data)
 #define SCREEN_SPLIT
 
 // Switch between Small (240x320 Touch) and Large (320x480) LCD's
+#define LCD_SMALL
+#ifdef LCD_SMALL
 #include "Game_Small.h"
-//#include "Game_Large.h"
+#else
+#include "Game_Large.h"
+#endif
 
 #ifdef SCREEN_FULL_SIZE
 #define SPARSE SparseXL

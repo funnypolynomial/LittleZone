@@ -2,7 +2,6 @@
 #include "Pins.h"
 #include "BTN.h"
 #include "RTC.h"
-#include "LCD.h"
 #include "MathBox.h"
 #include "Shapes.h"
 #include "Sparse.h"
@@ -145,7 +144,7 @@ void setup()
   btn2Adj.Init(PIN_BTN_ADJ);
 #endif 
   LCD_INIT();
-  lcd.fillByte(lcd.beginFill(0, 0, LCD_WIDTH, LCD_HEIGHT), 0x00);
+  LCD_FILL_BYTE(LCD_BEGIN_FILL(0, 0, LCD_WIDTH, LCD_HEIGHT), 0x00);
   MathBox::Init();
   Shapes::Init();
   Game::Init();

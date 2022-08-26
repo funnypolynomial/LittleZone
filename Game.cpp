@@ -625,6 +625,7 @@ void WaitForNoTouch()
     int na;
     while (LCD_GET_TOUCH(na, na)) 
         ; 
+    (void)na;
 }
 
 // Setting the time is a little convoluted because this was developed in a 
