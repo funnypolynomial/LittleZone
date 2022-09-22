@@ -10,7 +10,6 @@
 // Libraries:
 #include "SoftwareI2C.h"
 
-
 //                                         LittleZone
 // A toy-like approximation of 1980's Battlezone game's "Attract" (demo) mode.  Can show the time, so a desk accessory perhaps.
 // It started when this: https://spectrum.ieee.org/battlezone popped up on my Google feed in Feb '22. 
@@ -86,6 +85,9 @@
 //
 // LCD:
 //  The Game's interface to an LCD is defined by the 7 LCD_ macros in Game_<size>.h
+//  Note also the XC4630_HX8347i define for different revisions of the small LCD
+//  There are also defines for left/right landscape orientation
+//  XC4630_TOUCH_CALIB/CHECK for touch-screen calibration/check
 //
 // Notes:
 // "Low memory available, stability problems may occur."
@@ -94,6 +96,11 @@
 //   Relatively simple to do since the main loop is basically the same.  
 //   It shows of the ~400 bytes available (after globals including SparseXL::pool consume most of the 2048 bytes),
 //   only ~150 are needed on the stack.
+//
+// Changes
+// Sept ‘22: Added support for new-stock "Small" LCD (Jaycar XC4630, HX8347 controller, comes in an anti-static bag). 
+//           Added optional touch calib (XC4630_TOUCH_CALIB) and touch check (XC4630_TOUCH_CHECK). 
+
 
 #ifdef DEBUG_STACK_CHECK
 // see, for example, https://www.avrfreaks.net/forum/soft-c-avrgcc-monitoring-stack-usage
@@ -114,7 +121,7 @@ void StackPaint()
 
 void StackCheck()
 {
-  // Check bytes from the top of dynamic variables up to the top of our stack
+  // Check bytes from the top of dynamic variables up to the bottom of our stack
   // Updates stackHeadroom
   const uint8_t *ptr = &_end;
   uint16_t       ctr = 0;
@@ -145,6 +152,7 @@ void setup()
 #endif 
   LCD_INIT();
   LCD_FILL_BYTE(LCD_BEGIN_FILL(0, 0, LCD_WIDTH, LCD_HEIGHT), 0x00);
+
   MathBox::Init();
   Shapes::Init();
   Game::Init();
@@ -158,5 +166,4 @@ void loop()
   Game::Draw(full);
   full = false;
   StackCheck();
-
 }

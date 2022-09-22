@@ -1,5 +1,4 @@
-#ifndef _BTN_H
-#define _BTN_H
+#pragma once
 
 class BTN
 {
@@ -17,5 +16,3 @@ class BTN
 
 extern BTN btn1Set;
 extern BTN btn2Adj;
-
-#endif

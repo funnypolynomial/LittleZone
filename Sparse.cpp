@@ -99,7 +99,7 @@ static bool Insert(byte y, byte* pValue, byte value, byte value2 = 0)
     {
       // there's room for 2 bytes
       // shuffle pool bytes up
-      memmove(pValue + 2, pValue, (pool + pool_top) - pValue); // ***THIS FIX NOT IN ElitePetite***
+      memmove(pValue + 2, pValue, (pool + pool_top) - pValue);
       *pValue = value;
       *(pValue + 1) = value2;
       pool_top += 2;
@@ -154,7 +154,7 @@ static void Pixel(byte x, byte y)
       }
       else // need 3
       {
-        if (!Insert(y, thisPtr + 1, NUL, 2))  // len=2, as 3 bytes ***THIS FIX NOT IN ElitePetite***
+        if (!Insert(y, thisPtr + 1, NUL, 2))  // len=2, as 3 bytes
           cacheY = INF;
       }
     }
@@ -244,7 +244,7 @@ static void Pixel(byte x, byte y)
       if (x >= 2) // 2 bytes will work
         Insert(y, thisPtr + 1, 2);  // len=2
       else // need 3
-        Insert(y, thisPtr + 1, NUL, 2);  // len=2, as 3 bytes  ***THIS FIX NOT IN ElitePetite***
+        Insert(y, thisPtr + 1, NUL, 2);  // len=2, as 3 bytes
     }
     else if (bytes == 2)
     {

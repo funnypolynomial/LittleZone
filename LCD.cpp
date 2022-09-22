@@ -2,7 +2,7 @@
 #include "LCD.h"
 
 // The XC4630d hairball, see below
-//touch calibration data=> raw values correspond to orientation 1
+// touch calibration data => raw values correspond to orientation 1
 #define XC4630_TOUCHX0 920
 #define XC4630_TOUCHY0 950
 #define XC4630_TOUCHX1 120 //170
@@ -11,9 +11,6 @@
 extern int XC4630_width,XC4630_height;
 extern byte XC4630_orientation;
 
-extern void XC4630_command(unsigned char d);
-extern void XC4630_data(unsigned char d);
-extern void XC4630_areaset(int x1,int y1,int x2,int y2);
 extern void XC4630_init();
 extern void XC4630_rotate(int n);
 
@@ -24,6 +21,7 @@ extern int XC4630_touchy();
 extern int XC4630_istouch(int x1,int y1,int x2,int y2);
 
 LCD lcd;
+void HX8347i_Init(byte rotation);
 
 #ifdef SERIALIZE
 #define SERIALISE_COMMENT(_c) if (_serialise) { Serial.print("; ");Serial.println(_c);}
@@ -42,8 +40,10 @@ LCD lcd;
 #define LCD_RD   B00000001
 #define LCD_WR   B00000010
 #define LCD_RS   B00000100
+#define LCD_CD   B00000100
 #define LCD_CS   B00001000
 #define LCD_RST  B00010000
+
 
 // optimised code, specific to Uno
 #define ToggleDataWR PORTC = B00010101; PORTC = B00010111; // keeps RST, RS & RD HIGH 
@@ -59,13 +59,24 @@ LCD lcd;
 void LCD::init()
 {
   // reset
+#ifdef XC4630_HX8347i
+#ifdef ROTATION_USB_LEFT
+  HX8347i_Init(1);
+  XC4630_orientation = 2;
+#else
+  HX8347i_Init(3);
+  XC4630_orientation = 4;
+#endif
+  ChipSelect(true);
+  XC4630_width = 320;
+  XC4630_height = 240;
+#else
   delay(250);
   pinMode(A4, OUTPUT);
   digitalWrite(A4, LOW);
   delay(100);
   digitalWrite(A4, HIGH);
   delay(500);
-
 
   XC4630_init();
   ChipSelect(true);
@@ -76,8 +87,16 @@ void LCD::init()
   XC4630_rotate(4);
 #endif
 
+#endif
+
+#ifdef XC4630_TOUCH_CALIB
+  touchCalib();
+#elif defined(XC4630_TOUCH_CHECK)
+  touchCheck();
+#else
   SERIALISE_COMMENT("*** START");
   SERIALISE_INIT(XC4630_width, XC4630_height, 1);
+#endif  
 }
 
 void LCD::ChipSelect(bool select)
@@ -92,50 +111,45 @@ void LCD::ChipSelect(bool select)
 unsigned long LCD::beginFill(int x, int y, int w, int h)
 {
   SERIALISE_BEGINFILL(x, y, w, h);
-#ifdef ROTATION_USB_LEFT
-  // rotation = 2 case
   int x2 = x + w - 1;
-  int y2 = y + h - 1;
-
+  int y2 = y + h - 1;  
+  
+#ifdef XC4630_HX8347i
+  FastCmdByte(0x02);
+  FastData(x >> 8);
+  FastCmdByte(0x03);
+  FastData(x);
+  FastCmdByte(0x04);
+  FastData(x2 >> 8);
+  FastCmdByte(0x05);
+  FastData(x2);
+  
+  FastCmdByte(0x06);
+  FastData(y >> 8);
+  FastCmdByte(0x07);
+  FastData(y);
+  FastCmdByte(0x08);
+  FastData(y2 >> 8);
+  FastCmdByte(0x09);
+  FastData(y2);
+  FastCmdByte(0x22);  // Write Data to GRAM
+#else
+  // adjust coords
   int tmp = x;
   int tmp2 = x2;
+#ifdef ROTATION_USB_LEFT
+  // rotation = 2 case 
   x = y;
   x2 = y2;
-  y = _width - tmp2 - 1;
-  y2 = _width - tmp - 1;
-
-  FastCmd(0x50);               //set x bounds
-  FastData(x >> 8);
-  FastData(x);
-  FastCmd(0x51);               //set x bounds
-  FastData(x2 >> 8);
-  FastData(x2);
-  FastCmd(0x52);               //set y bounds
-  FastData(y >> 8);
-  FastData(y);
-  FastCmd(0x53);               //set y bounds
-  FastData(y2 >> 8);
-  FastData(y2);
-
-  FastCmd(0x20);               //set x pos
-  FastData(x >> 8);
-  FastData(x);
-  FastCmd(0x21);               //set y pos
-  FastData(y2 >> 8);
-  FastData(y2);
-
-  FastCmd(0x22);  // Write Data to GRAM
+  y = XC4630_width - tmp2 - 1;
+  y2 = XC4630_width - tmp - 1;
 #else
   // rotation = 4 case
-  int x2 = x + w - 1;
-  int y2 = y + h - 1;
-
-  int tmp = x;
-  int tmp2 = x2;
   x = XC4630_height - y2 - 1;
   x2 = XC4630_height - y - 1;
   y = tmp;
   y2 = tmp2;
+#endif  
 
   FastCmd(0x50);               //set x bounds
   FastData(x >> 8);
@@ -150,15 +164,21 @@ unsigned long LCD::beginFill(int x, int y, int w, int h)
   FastData(y2 >> 8);
   FastData(y2);
 
+#ifdef ROTATION_USB_LEFT
+  y = y2;
+#else
+  x = x2;
+#endif
   FastCmd(0x20);               //set x pos
-  FastData(x2 >> 8);
-  FastData(x2);
+  FastData(x >> 8);
+  FastData(x);
   FastCmd(0x21);               //set y pos
   FastData(y >> 8);
   FastData(y);
-
+  
   FastCmd(0x22);  // Write Data to GRAM
 #endif
+
   unsigned long count = w;
   count *= h;
   return count;
@@ -223,8 +243,212 @@ bool LCD::isTouch(int x, int y, int w, int h)
 bool LCD::getTouch(int& x, int& y)
 {
   x = XC4630_touchx();
-  y = XC4630_touchy();
-  return x >= 0 && y >= 0;
+  if (x >= 0)
+  {
+    y = XC4630_touchy();
+    return y >= 0;
+  }
+  return false;
+}
+
+void LCD::touchCalib()
+{
+  // Writes to Serial, XC4630_TOUCH* #define values to paste at the top of the file
+  // Visit each side with the stylus
+#ifdef XC4630_TOUCH_CALIB  
+  int touchX0 = XC4630_TOUCHX0, touchY0 = XC4630_TOUCHY0, touchX1 = XC4630_TOUCHX1, touchY1 = XC4630_TOUCHY1;
+  beginFill(0, 0, XC4630_width, XC4630_height);
+  // draw shapes
+  for (int row = 0; row < XC4630_height; row++)
+  {
+    int indent = (row > XC4630_height/2)?XC4630_height - row:row;
+    fillColour(indent, RGB(255, 0, 0));
+    fillColour(XC4630_width - 2*indent, (row > XC4630_height/2)?RGB(0, 0, 255):RGB(255, 0, 255));
+    fillColour(indent, RGB(0, 255, 0));
+  }
+  Serial.println("Drag stylus to all edges");
+  while (true)
+  {
+    int x = XC4630_touchrawx();
+    int y = XC4630_touchrawy();
+    bool update = false;
+    if (x > 1000 || y > 1000) 
+      continue; // ignore resting values
+    if (x >= 0)
+    {
+      if (x > touchX0)
+      {
+        touchX0 = x;
+        update = true;
+      }
+      else if (x < touchX1)
+      {
+        touchX1 = x;
+        update = true;
+      }    
+    }
+    if (y >= 0)
+    {
+      if (y > touchY0)
+      {
+        touchY0 = y;
+        update = true;
+      }
+      else if (y < touchY1)
+      {
+        touchY1 = y;
+        update = true;
+      }    
+    }
+    if (update)
+    {
+      Serial.println("--------------------------");
+      Serial.print("X0 ");
+      Serial.println(touchX0);
+      Serial.print("Y0 ");
+      Serial.println(touchY0);
+      Serial.print("X1 ");
+      Serial.println(touchX1);
+      Serial.print("Y1 ");
+      Serial.println(touchY1);  
+    }
+  }
+#endif  
+}
+
+void LCD::touchCheck()
+{
+  // Tracks the stylus on-screen
+  const int tol = 5;
+  fillByte(beginFill(0, 0, XC4630_width, XC4630_height), 0x00);
+  int prevX = -1, prevY;
+  while (true)
+  {
+    int x, y;
+    if (getTouch(x, y))
+    {
+      if (prevX != -1)
+      {
+        if (abs(x-prevX) < tol && abs(y-prevY) < tol)
+          continue; // avoid flicker
+        fillByte(beginFill(prevX, 0, 1, XC4630_height), 0x00);
+        fillByte(beginFill(0, prevY, XC4630_width, 1), 0x00);        
+      }
+      prevX = x;
+      prevY = y;
+      fillByte(beginFill(prevX, 0, 1, XC4630_height), 0xFF);
+      fillByte(beginFill(0, prevY, XC4630_width, 1), 0xFF); 
+    }
+    else
+    {
+      fillByte(beginFill(0, 0, XC4630_width, XC4630_height), 0x00);
+    }
+  }
+}
+
+//=================================================================
+// **** This initialisation sequence is gleaned from MCUFRIEND_kbv.cpp LCD ID=0x9595 https://github.com/prenticedavid/MCUFRIEND_kbv
+const byte HX8347i_initialisation[] PROGMEM = 
+{
+    0xEA, 0x00, 
+    0xEB, 0x20,
+    0xEC, 0x0C, 
+    0xED, 0xC4,
+    0xE8, 0x38,
+    0xE9, 0x10,
+    0xF1, 0x01,
+    0xF2, 0x10,
+    
+    0x40, 0x01, 
+    0x41, 0x00, 
+    0x42, 0x00, 
+    0x43, 0x10, 
+    0x44, 0x0E, 
+    0x45, 0x24, 
+    0x46, 0x04, 
+    0x47, 0x50, 
+    0x48, 0x02, 
+    0x49, 0x13, 
+    0x4A, 0x19, 
+    0x4B, 0x19, 
+    0x4C, 0x16, 
+    
+    0x50, 0x1B, 
+    0x51, 0x31, 
+    0x52, 0x2F, 
+    0x53, 0x3F, 
+    0x54, 0x3F, 
+    0x55, 0x3E, 
+    0x56, 0x2F, 
+    0x57, 0x7B, 
+    0x58, 0x09, 
+    0x59, 0x06, 
+    0x5A, 0x06, 
+    0x5B, 0x0C, 
+    0x5C, 0x1D, 
+    0x5D, 0xCC, 
+    
+    0x1B, 0x1B,
+    0x1A, 0x01,
+    0x24, 0x2F,
+    0x25, 0x57,
+    0x23, 0x88,
+    0x18, 0x34,
+    0x19, 0x01,
+    0x01, 0x00,
+    0x1F, 0x88,
+    0xFF,    5,
+    0x1F, 0x80,
+    0xFF,    3,
+    0x1F, 0x90,
+    0xFF,    5,
+    0x1F, 0xD0,
+    0xFF,    5,
+    0x17, 0x05,
+    0x36, 0x00,
+    0x28, 0x38,
+    0xFF,  40,
+    0x28, 0x3F,
+    0x16, 0x18,
+    0xFF,    0  // end!
+};
+
+void HX8347i_Init(byte rotation)
+{
+  // outputs
+  DDRB  |=  0x03; 
+  DDRC  |= (LCD_CS | LCD_WR | LCD_RD | LCD_RST | LCD_CD);
+  DDRD  |=  0xFC;
+  PORTC |= (LCD_CS | LCD_WR | LCD_RD | LCD_RST); // all idle
+  delay(50);
+  PORTC &= ~LCD_RST; // reset
+  delay(100);
+  PORTC |=  LCD_RST;  // idle
+  delay(100);
+
+  // init sequence
+  const byte* pInit = HX8347i_initialisation;
+  while (true)
+  {
+    byte cmd = pgm_read_byte_near(pInit++);
+    byte dat = pgm_read_byte_near(pInit++);
+    if (cmd == 0xFF)
+    {
+      if (dat)
+        delay(dat);
+      else
+        break;
+    }
+    else
+    {
+      FastCmdByte(cmd);
+      FastData(dat);
+    }
+  }
+
+  // rotation
+  FastCmdByte(0x16);
+  FastData((rotation == 3)?0xF8:0x28);
 }
 
 //=================================================================
@@ -261,51 +485,6 @@ int XC4630_width,XC4630_height;
 byte XC4630_orientation;
 
 // BUT NOTE the LCD code is optimised for Uno!
-//defines for LCD pins, dependent on board
-//For Mega Board
-#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
-#define XC4630SETUP   "MEGA"
-#define XC4630RSTOP   DDRF|= 16
-#define XC4630RST0    PORTF&= 239
-#define XC4630RST1    PORTF|= 16
-#define XC4630CSOP    DDRF|=8
-#define XC4630CS0     PORTF&=247
-#define XC4630CS1     PORTF|=8
-#define XC4630RSOP    DDRF|=4
-#define XC4630RS0     PORTF&=251
-#define XC4630RS1     PORTF|=4
-#define XC4630WROP    DDRF|=2
-#define XC4630WR0     PORTF&=253
-#define XC4630WR1     PORTF|=2
-#define XC4630RDOP    DDRF|=1
-#define XC4630RD0     PORTF&=254
-#define XC4630RD1     PORTF|=1
-#define XC4630dataOP  DDRE=DDRE|56;DDRG=DDRG|32;DDRH=DDRH|120;
-#define XC4630data(d) PORTE=(PORTE&199)|((d&12)<<2)|((d&32)>>2);PORTG=(PORTG&223)|((d&16)<<1);PORTH=(PORTH&135)|((d&192)>>3)|((d&3)<<5);
-#endif
-
-//For Leonardo Board
-#if defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega16U4__)
-#define XC4630SETUP   "LEO"
-#define XC4630RSTOP   DDRF |= 2
-#define XC4630RST0    PORTF &= 253
-#define XC4630RST1    PORTF |= 2
-#define XC4630CSOP    DDRF |= 16
-#define XC4630CS0     PORTF &= 239
-#define XC4630CS1     PORTF |= 16
-#define XC4630RSOP    DDRF |= 32
-#define XC4630RS0     PORTF &= 223
-#define XC4630RS1     PORTF |= 32
-#define XC4630WROP    DDRF |= 64
-#define XC4630WR0     PORTF &= 191
-#define XC4630WR1     PORTF |= 64
-#define XC4630RDOP    DDRF |= 128
-#define XC4630RD0     PORTF &= 127
-#define XC4630RD1     PORTF |= 128
-#define XC4630dataOP  DDRB=DDRB|48;DDRC=DDRC|64;DDRD=DDRD|147;DDRE=DDRE|64;
-#define XC4630data(d) PORTB=(PORTB&207)|((d&3)<<4);PORTC=(PORTC&191)|((d&32)<<1);PORTD=(PORTD&108)|((d&4)>>1)|((d&8)>>3)|((d&16))|((d&64)<<1);PORTE=(PORTE&191)|((d&128)>>1);
-#endif
-
 //for Uno board
 #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
 #define XC4630SETUP   "UNO"
@@ -328,26 +507,8 @@ byte XC4630_orientation;
 #define XC4630data(d) PORTD=(PORTD&3)|(d&252); PORTB=(PORTB&252)|(d&3); 
 #endif
 
-//default that will work for any other board
-#ifndef XC4630SETUP
-#define XC4630SETUP   "DEFAULT"
-#define XC4630RSTOP   pinMode(A4,OUTPUT)
-#define XC4630RST0    digitalWrite(A4,LOW)
-#define XC4630RST1    digitalWrite(A4,HIGH)
-#define XC4630CSOP    pinMode(A3,OUTPUT)
-#define XC4630CS0     digitalWrite(A3,LOW)
-#define XC4630CS1     digitalWrite(A3,HIGH)
-#define XC4630RSOP    pinMode(A2,OUTPUT)
-#define XC4630RS0     digitalWrite(A2,LOW)
-#define XC4630RS1     digitalWrite(A2,HIGH)
-#define XC4630WROP    pinMode(A1,OUTPUT)
-#define XC4630WR0     digitalWrite(A1,LOW)
-#define XC4630WR1     digitalWrite(A1,HIGH)
-#define XC4630RDOP    pinMode(A0,OUTPUT)
-#define XC4630RD0     digitalWrite(A0,LOW)
-#define XC4630RD1     digitalWrite(A0,HIGH)
-#define XC4630dataOP  for(int i=2;i<10;i++){pinMode(i,OUTPUT);}
-#define XC4630data(d) for(int i=2;i<10;i++){digitalWrite(i,d&(1<<(i%8)));}
+#ifndef ARDUINO_AVR_UNO
+#pragma message("*** Designed for UNO only! ***")
 #endif
 
 void XC4630_command(unsigned char d)
@@ -364,82 +525,6 @@ void XC4630_data(unsigned char d)
   XC4630data(d);    //data
   XC4630WR0;        //toggle WR
   XC4630WR1;
-}
-
-
-void XC4630_areaset(int x1,int y1,int x2,int y2)
-{
-  if(x2<x1){int i=x1;x1=x2;x2=i;}   //sort x
-  if(y2<y1){int i=y1;y1=y2;y2=i;}   //sort y
-  int t1,t2,t3,t4,xs,ys;
-  //for UC8230, need to internally remap x and y- pixel write direction?
-  xs=x1;
-  ys=y1;
-  t1=x1;
-  t2=x2;
-  t3=y1;
-  t4=y2;
-  switch(XC4630_orientation){
-    case 1:
-      x1=XC4630_width-1-t2;
-      x2=XC4630_width-1-t1;
-      y1=XC4630_height-1-t4;
-      y2=XC4630_height-1-t3;
-      xs=x2;
-      ys=y2;    
-      break;
-    case 2:
-      x1=t3;
-      x2=t4;
-      y1=XC4630_width-1-t2;
-      y2=XC4630_width-1-t1;
-      xs=x1;
-      ys=y2;    
-    break;
-    case 3:
-      xs=x1;
-      ys=y1;    
-      break;
-    case 4:
-      x1=XC4630_height-1-t4;
-      x2=XC4630_height-1-t3;
-      y1=t1;
-      y2=t2;
-      xs=x2;
-      ys=y1;    
-      break;
-  }
-  XC4630CS0;
-
-  XC4630_command(0);               //hi byte   
-  XC4630_command(80);               //set x bounds  
-  XC4630_data(x1>>8);
-  XC4630_data(x1);
-  XC4630_command(0);               //hi byte   
-  XC4630_command(81);               //set x bounds  
-  XC4630_data(x2>>8);
-  XC4630_data(x2);
-  XC4630_command(0);               //hi byte   
-  XC4630_command(82);               //set y bounds
-  XC4630_data(y1>>8);
-  XC4630_data(y1);
-  XC4630_command(0);               //hi byte   
-  XC4630_command(83);               //set y bounds  
-  XC4630_data(y2>>8);
-  XC4630_data(y2);
-
-  XC4630_command(0);               //hi byte   
-  XC4630_command(32);               //set x pos
-  XC4630_data(xs>>8);
-  XC4630_data(xs);
-  XC4630_command(0);               //hi byte   
-  XC4630_command(33);               //set y pos
-  XC4630_data(ys>>8);
-  XC4630_data(ys);
-  
-  XC4630_command(0);               //hi byte   
-  XC4630_command(34);               //drawing data to follow
-  XC4630CS1;
 }
 
 //"from misc.ws LCD_ID_reader- gives a successful init"

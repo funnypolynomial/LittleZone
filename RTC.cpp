@@ -25,8 +25,8 @@ void RTC::Setup()
 
 void RTC::ReadTime()
 {
-    // just the minutes and hours
-    // from register 1
+  // just the minutes and hours
+  // from register 1
   softWire.beginTransmission(RTC_I2C_ADDRESS);
   softWire.write((byte)0x01);
   softWire.endTransmission();
@@ -51,6 +51,7 @@ void RTC::ReadTime()
     m_Hour24 = BCD2Dec(Register2 & 0x3F);
   }
 }
+
 byte RTC::ReadMinute()
 {
   // from register 01
